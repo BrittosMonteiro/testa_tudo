@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --lucas: #f00
+}
+
+@theme inline {
+  --color-lucas: var(--lucas)
+  --font-sans: var(--font-open-sans);
+}
+
+body {
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+}
