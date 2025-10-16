@@ -1,3 +1,3 @@
 export default function Home() {
-  return <div>Deve funcionar offline</div>;
+  return <div>Home</div>;
 }
