@@ -1,95 +1,117 @@
-const CACHE_NAME = "pwa-cache-v3";
-const STATIC_ASSETS = [
-  "/", // Página inicial
-  "/offline.html", // Página offline customizada
-  "/manifest.json", // Manifest
-  "/favicon.ico", // Ícone
-];
+const CACHE_NAME = "pwa-cache-v4";
+const STATIC_ROUTES = ["/", "/sobre"];
+const DB_NAME = "offline-routes-db";
+const DB_STORE = "routes";
 
-// Instala e faz o pre-cache das rotas e assets estáticos
+// --- INSTALAÇÃO ---
 self.addEventListener("install", (event) => {
-  self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ROUTES))
   );
+  self.skipWaiting();
 });
 
-// Ativa e remove caches antigos
+// --- ATIVAÇÃO ---
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) =>
-        Promise.all(
-          keys.map((key) => {
-            if (key !== CACHE_NAME) return caches.delete(key);
-          })
-        )
-      )
-      .then(() => self.clients.claim())
+    (async () => {
+      self.clients.claim();
+      await restoreDynamicRoutesFromDB();
+    })()
   );
 });
 
-// Escuta mensagens do front-end (para cache dinâmico de rotas)
-self.addEventListener("message", (event) => {
-  if (!event.data) return;
+// --- MENSAGENS ---
+self.addEventListener("message", async (event) => {
+  const { type, routes } = event.data || {};
 
-  // Cache manual de rotas enviadas via postMessage
-  if (event.data.type === "CACHE_ROUTES") {
-    const routes = event.data.payload || [];
-    caches.open(CACHE_NAME).then((cache) => {
-      routes.forEach((route) => {
-        cache.add(route).catch(() => {
-          console.warn("[SW] Falha ao salvar rota dinâmica:", route);
-        });
-      });
-    });
-  }
+  if (type === "PRECACHE_ROUTES" && Array.isArray(routes)) {
+    console.log("[SW] Recebendo rotas para pré-cache:", routes);
 
-  // Forçar atualização imediata do service worker (caso queira)
-  if (event.data.type === "SKIP_WAITING") {
-    self.skipWaiting();
+    const cache = await caches.open(CACHE_NAME);
+
+    for (const path of routes) {
+      try {
+        const response = await fetch(path);
+        if (response.ok) {
+          await cache.put(path, response);
+          await saveRouteToDB(path);
+          console.log("[SW] Cacheado:", path);
+        }
+      } catch (err) {
+        console.error("[SW] Falha ao cachear rota:", path, err);
+      }
+    }
   }
 });
 
-// Estratégia de busca (Network falling back to Cache)
-// self.addEventListener("fetch", (event) => {
-//   const { request } = event;
-
-//   // Ignorar requisições não GET
-//   if (request.method !== "GET") return;
-
-//   event.respondWith(
-//     fetch(request)
-//       .then((response) => {
-//         // Salva no cache respostas bem-sucedidas
-//         const responseClone = response.clone();
-//         caches
-//           .open(CACHE_NAME)
-//           .then((cache) => cache.put(request, responseClone));
-//         return response;
-//       })
-//       .catch(async () => {
-//         // Busca no cache em caso de falha na rede
-//         const cachedResponse = await caches.match(request);
-//         if (cachedResponse) return cachedResponse;
-
-//         // Retorna a página offline se nada for encontrado
-//         if (request.mode === "navigate") {
-//           return caches.match("/offline.html");
-//         }
-//       })
-//   );
-// });
-
+// --- FETCH ---
 self.addEventListener("fetch", (event) => {
-  if (event.request.mode === "navigate") {
+  const { request } = event;
+  if (request.mode === "navigate") {
     event.respondWith(
-      fetch(event.request).catch(async () => {
-        const cache = await caches.open("my-app-cache-v2");
-        const cached = await cache.match(event.request);
-        return cached || cache.match("/offline.html");
+      fetch(request).catch(async () => {
+        const cache = await caches.open(CACHE_NAME);
+        const cached = await cache.match(request.url);
+        if (cached) return cached;
+
+        // fallback
+        return new Response(
+          `<html><body style="display:flex;align-items:center;justify-content:center;flex-direction:column;height:100vh;font-family:sans-serif;text-align:center">
+            <h1>Você está offline</h1>
+            <p>Esta página não está disponível sem conexão.</p>
+            <button onclick="window.location.href='/'">Voltar</button>
+          </body></html>`,
+          { headers: { "Content-Type": "text/html" } }
+        );
       })
     );
   }
 });
+
+// --- IndexedDB Helpers ---
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(DB_STORE)) {
+        db.createObjectStore(DB_STORE, { keyPath: "path" });
+      }
+    };
+    request.onsuccess = (e) => resolve(e.target.result);
+    request.onerror = (e) => reject(e.target.error);
+  });
+}
+
+async function saveRouteToDB(path) {
+  const db = await openDB();
+  const tx = db.transaction(DB_STORE, "readwrite");
+  tx.objectStore(DB_STORE).put({ path });
+  return tx.complete;
+}
+
+async function getAllRoutesFromDB() {
+  const db = await openDB();
+  const tx = db.transaction(DB_STORE, "readonly");
+  const store = tx.objectStore(DB_STORE);
+  return new Promise((resolve) => {
+    const request = store.getAll();
+    request.onsuccess = () => resolve(request.result || []);
+  });
+}
+
+async function restoreDynamicRoutesFromDB() {
+  const cache = await caches.open(CACHE_NAME);
+  const storedRoutes = await getAllRoutesFromDB();
+
+  for (const { path } of storedRoutes) {
+    try {
+      const response = await fetch(path);
+      if (response.ok) {
+        await cache.put(path, response);
+        console.log("[SW] Restaurou cache da rota dinâmica:", path);
+      }
+    } catch {}
+  }
+}
