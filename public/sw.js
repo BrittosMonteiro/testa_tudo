@@ -6,7 +6,9 @@ const DB_STORE = "routes";
 // --- INSTALL ---
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ROUTES))
+    caches.open(CACHE_NAME).then(async (cache) => {
+      await cache.addAll(STATIC_ROUTES);
+    })
   );
   self.skipWaiting();
 });
@@ -44,26 +46,13 @@ self.addEventListener("message", async (event) => {
 
 // --- FETCH ---
 self.addEventListener("fetch", (event) => {
-  const { request } = event;
-  if (request.mode === "navigate") {
+  if (event.request.mode === "navigate") {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          return response;
-        })
-        .catch(async () => {
-          const cache = await caches.open(CACHE_NAME);
-
-          // tenta achar a rota no cache
-          const cached = await cache.match(request.url);
-          if (cached) return cached;
-
-          // fallback para a rota offline (já cacheada)
-          const offlinePage = await cache.match("/offline");
-          return offlinePage || Response.error();
-        })
+      fetch(event.request).catch(async () => {
+        const cache = await caches.open(CACHE_NAME);
+        const cached = await cache.match(event.request);
+        return cached || cache.match("/offline");
+      })
     );
   }
 });

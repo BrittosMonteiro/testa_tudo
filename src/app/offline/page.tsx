@@ -1,19 +1,20 @@
 "use client";
 
+import Link from "next/link";
+
 export default function OfflinePage() {
   return (
-    <main className="flex flex-col items-center justify-center h-screen text-center p-6">
-      <h1 className="text-2xl font-bold mb-4">Você está offline</h1>
-      <p className="text-gray-500 mb-6">
-        Esta página não está disponível sem conexão.
+    <div className="h-screen flex flex-col items-center justify-center bg-gray-900 text-white">
+      <h1 className="text-2xl font-semibold mb-4">Você está offline</h1>
+      <p className="mb-6 text-gray-300">
+        Não foi possível carregar esta página.
       </p>
-      <button
-        type="button"
-        onClick={() => (window.location.href = "/")}
-        className="bg-blue-500 text-white px-4 py-2 rounded-lg"
+      <Link
+        href="/"
+        className="px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg text-white"
       >
         Voltar para a página inicial
-      </button>
-    </main>
+      </Link>
+    </div>
   );
 }
