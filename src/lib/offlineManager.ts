@@ -6,7 +6,7 @@ export async function precacheDynamicRoutes(routes: string[]) {
   const registration = await navigator.serviceWorker.ready;
 
   registration.active?.postMessage({
-    type: "PRECACHE_ROUTES",
+    type: "CACHE_ROUTES",
     routes,
   });
 }
