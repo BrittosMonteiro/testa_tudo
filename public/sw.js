@@ -81,3 +81,15 @@ self.addEventListener("fetch", (event) => {
       })
   );
 });
+
+// self.addEventListener("fetch", (event) => {
+//   if (event.request.mode === "navigate") {
+//     event.respondWith(
+//       fetch(event.request).catch(async () => {
+//         const cache = await caches.open("my-app-cache-v2");
+//         const cached = await cache.match(event.request);
+//         return cached || cache.match("/offline.html");
+//       })
+//     );
+//   }
+// });
