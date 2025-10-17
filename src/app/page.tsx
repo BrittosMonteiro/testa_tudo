@@ -6,10 +6,8 @@ import { useEffect } from "react";
 
 export default function Home() {
   useEffect(() => {
-    // Exemplo: rotas recebidas do servidor
     const dynamicRoutes = ["/post/1", "/post/2", "/post/3"];
 
-    // Envia para o Service Worker
     precacheDynamicRoutes(dynamicRoutes);
   }, []);
   return (

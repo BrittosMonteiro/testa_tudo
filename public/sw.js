@@ -1,9 +1,9 @@
-const CACHE_NAME = "pwa-cache-v4";
-const STATIC_ROUTES = ["/", "/sobre"];
+const CACHE_NAME = "pwa-cache-v5";
+const STATIC_ROUTES = ["/", "/sobre", "/offline"];
 const DB_NAME = "offline-routes-db";
 const DB_STORE = "routes";
 
-// --- INSTALAÇÃO ---
+// --- INSTALL ---
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ROUTES))
@@ -11,7 +11,7 @@ self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
 
-// --- ATIVAÇÃO ---
+// --- ACTIVATE ---
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
@@ -21,13 +21,10 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// --- MENSAGENS ---
+// --- MESSAGE ---
 self.addEventListener("message", async (event) => {
   const { type, routes } = event.data || {};
-
   if (type === "PRECACHE_ROUTES" && Array.isArray(routes)) {
-    console.log("[SW] Recebendo rotas para pré-cache:", routes);
-
     const cache = await caches.open(CACHE_NAME);
 
     for (const path of routes) {
@@ -50,21 +47,23 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request).catch(async () => {
-        const cache = await caches.open(CACHE_NAME);
-        const cached = await cache.match(request.url);
-        if (cached) return cached;
+      fetch(request)
+        .then((response) => {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          return response;
+        })
+        .catch(async () => {
+          const cache = await caches.open(CACHE_NAME);
 
-        // fallback
-        return new Response(
-          `<html><body style="display:flex;align-items:center;justify-content:center;flex-direction:column;height:100vh;font-family:sans-serif;text-align:center">
-            <h1>Você está offline</h1>
-            <p>Esta página não está disponível sem conexão.</p>
-            <button onclick="window.location.href='/'">Voltar</button>
-          </body></html>`,
-          { headers: { "Content-Type": "text/html" } }
-        );
-      })
+          // tenta achar a rota no cache
+          const cached = await cache.match(request.url);
+          if (cached) return cached;
+
+          // fallback para a rota offline (já cacheada)
+          const offlinePage = await cache.match("/offline");
+          return offlinePage || Response.error();
+        })
     );
   }
 });
